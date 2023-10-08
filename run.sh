@@ -6,6 +6,8 @@ mkdir -p iso/boot/grub
 cp kernel ./iso/boot/kernel
 cp $1 iso/boot/initrd
 cat > iso/boot/grub/grub.cfg << EOF
+default=1
+timeout=0
 menuentry "openos" {
     multiboot /boot/kernel
     module /boot/initrd
