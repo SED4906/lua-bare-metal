@@ -11,6 +11,8 @@
 #include "uuid.h"
 #include "tar.h"
 
+#undef INITRD_DEBUG
+
 struct initrd_data {
     const char *name;
     const char *start;
@@ -36,10 +38,14 @@ static int initrd_open(lua_State *L, struct initrd_data *data, int arguments_sta
     const char *path = luaL_checkstring(L, arguments_start);
     const char *mode = lua_isstring(L, arguments_start + 1) ? lua_tostring(L, arguments_start + 1) : "r";
 
+#ifdef INITRD_DEBUG
+    printf("initrd_open \"%s\" with mode \"%s\"\n", path, mode);
+#endif
+
     if (!*path || !*mode)
         return luaL_error(L, "bad argument");
 
-    if (strstr(mode, "r") == NULL || strstr(mode, "w") != NULL)
+    if (strchr(mode, 'r') == NULL || strchr(mode, 'w') != NULL)
         return luaL_error(L, "read-only filesystem");
 
     struct tar_iterator *iter = open_tar(data->start, data->end);
@@ -47,6 +53,10 @@ static int initrd_open(lua_State *L, struct initrd_data *data, int arguments_sta
     size_t file_size;
     if (!tar_find(iter, path, TAR_NORMAL_FILE, &file_data, &file_size))
         return luaL_error(L, "file not found");
+
+#ifdef INITRD_DEBUG
+    printf("opening successfully\n");
+#endif
 
     struct open_file *open_file = malloc(sizeof(struct open_file));
     assert(open_file != NULL);
@@ -85,6 +95,10 @@ static int initrd_seek(lua_State *L, struct initrd_data *data, int arguments_sta
     const char *whence = luaL_checkstring(L, arguments_start + 1);
     int offset = luaL_checkinteger(L, arguments_start + 2);
 
+#ifdef INITRD_DEBUG
+    printf("initrd_seek %d to %d as \"%s\"\n", handle, offset, whence);
+#endif
+
     struct open_file *open_file = find_open_file(data, handle);
 
     if (open_file == NULL)
@@ -105,8 +119,21 @@ static int initrd_seek(lua_State *L, struct initrd_data *data, int arguments_sta
 static int initrd_exists(lua_State *L, struct initrd_data *data, int arguments_start) {
     const char *path = luaL_checkstring(L, arguments_start);
 
+#ifdef INITRD_DEBUG
+    printf("initrd_exists \"%s\"\n", path);
+#endif
+
     if (!*path) {
+#ifdef INITRD_DEBUG
+        printf("empty path doesn't exist\n");
+#endif
         lua_pushboolean(L, false);
+        return 1;
+    } else if (*path == '/' && *(path + 1) == 0) {
+#ifdef INITRD_DEBUG
+        printf("root exists\n");
+#endif
+        lua_pushboolean(L, true);
         return 1;
     }
 
@@ -114,7 +141,14 @@ static int initrd_exists(lua_State *L, struct initrd_data *data, int arguments_s
     const char *file_data;
     size_t file_size;
 
-    lua_pushboolean(L, tar_find(iter, path, 0, &file_data, &file_size));
+    bool result = tar_find(iter, path, 0, &file_data, &file_size);
+#ifdef INITRD_DEBUG
+    if (result)
+        printf("exists!\n");
+    else
+        printf("doesn't exist :(\n");
+#endif
+    lua_pushboolean(L, result);
     return 1;
 }
 
@@ -131,6 +165,10 @@ static int initrd_get_label(lua_State *L, struct initrd_data *data, int argument
 static int initrd_size(lua_State *L, struct initrd_data *data, int arguments_start) {
     const char *path = luaL_checkstring(L, arguments_start);
 
+#ifdef INITRD_DEBUG
+    printf("initrd_size \"%s\"\n", path);
+#endif
+
     if (!*path) {
         lua_pushboolean(L, false);
         return 1;
@@ -139,7 +177,7 @@ static int initrd_size(lua_State *L, struct initrd_data *data, int arguments_sta
     struct tar_iterator *iter = open_tar(data->start, data->end);
     const char *file_data;
     size_t file_size;
-    if (!tar_find(iter, path, TAR_NORMAL_FILE, &file_data, &file_size))
+    if (!tar_find(iter, path, 0, &file_data, &file_size))
         return luaL_error(L, "file not found");
 
     lua_pushnumber(L, file_size);
@@ -148,6 +186,10 @@ static int initrd_size(lua_State *L, struct initrd_data *data, int arguments_sta
 
 static int initrd_close(lua_State *L, struct initrd_data *data, int arguments_start) {
     int handle = luaL_checkinteger(L, arguments_start);
+
+#ifdef INITRD_DEBUG
+    printf("initrd_close %d\n", handle);
+#endif
 
     struct open_file *open_file = data->open_files, *last = NULL;
 
@@ -172,6 +214,10 @@ static int initrd_read(lua_State *L, struct initrd_data *data, int arguments_sta
     // lua is on crack
     uint64_t count2 = luaL_checkinteger(L, arguments_start);
     size_t count = count2 >= UINTPTR_MAX ? UINTPTR_MAX : count;
+
+#ifdef INITRD_DEBUG
+    printf("initrd_read %u from %d\n", count, handle);
+#endif
 
     struct open_file *open_file = find_open_file(data, handle);
 
@@ -205,30 +251,34 @@ static int initrd_is_directory(lua_State *L, struct initrd_data *data, int argum
     size_t len;
     const char *path = luaL_checklstring(L, arguments_start, &len);
 
-    struct tar_iterator *iter = open_tar(data->start, data->end);
-    const char *file_data;
-    size_t file_size;
-    if (!tar_find(iter, path, 0, &file_data, &file_size)) {
-        if (path[len - 1] == '/')
-            return luaL_error(L, "file not found");
+#ifdef INITRD_DEBUG
+    printf("initrd_is_directory \"%s\"\n", path);
+#endif
 
-        const char *old_path = path;
-        path = malloc(++len);
-        assert(path != NULL);
-        sprintf(path, "%s/", old_path);
-
-        iter = open_tar(data->start, data->end);
-        if (!tar_find(iter, path, TAR_DIRECTORY, &file_data, &file_size)) {
-            free(path);
-            return luaL_error(L, "file not found");
-        }
-
-        free(path);
+    if (*path == 0)
+        return luaL_error(L, "file not found");
+    else if (*path == '/' && *(path + 1) == 0) {
+#ifdef INITRD_DEBUG
+        printf("is always directory\n");
+#endif
         lua_pushboolean(L, true);
         return 1;
     }
 
+    struct tar_iterator *iter = open_tar(data->start, data->end);
+    const char *file_data;
+    size_t file_size;
+    if (!tar_find(iter, path, 0, &file_data, &file_size))
+        return luaL_error(L, "file not found");
+
     struct tar_header *header = file_data - 512; // hehe
+
+#ifdef INITRD_DEBUG
+    if (header->kind == TAR_DIRECTORY)
+        printf("is directory\n");
+    else
+        printf("isn't directory\n");
+#endif
 
     lua_pushboolean(L, header->kind == TAR_DIRECTORY);
     return 1;
@@ -236,6 +286,10 @@ static int initrd_is_directory(lua_State *L, struct initrd_data *data, int argum
 
 static int initrd_last_modified(lua_State *L, struct initrd_data *data, int arguments_start) {
     const char *path = luaL_checkstring(L, arguments_start);
+
+#ifdef INITRD_DEBUG
+    printf("initrd_last_modified \"%s\"\n", path);
+#endif
 
     if (!*path) {
         lua_pushboolean(L, false);
@@ -254,20 +308,72 @@ static int initrd_last_modified(lua_State *L, struct initrd_data *data, int argu
     return 1;
 }
 
-static int initrd_list(lua_State *L, struct initrd_data *data, int arguments_start) {
+static int initrd_list_root(lua_State *L, struct initrd_data *data) {
     const char name[256];
+    struct tar_iterator *iter = open_tar(data->start, data->end);
+    const char *file_data;
+    size_t file_size;
+
+    lua_newtable(L);
+
+    int i = 1;
+    while (true) {
+        struct tar_header *header;
+        const char *name_ptr = &name;
+
+        if (!next_file(iter, &header, &file_data, &file_size))
+            break;
+
+        header->name[99] = 0;
+        header->filename_prefix[154] = 0;
+        sprintf(name, "%s%s", header->name, header->filename_prefix);
+
+        if (*name_ptr == '/')
+            name_ptr++;
+
+        size_t name_len = strlen(name_ptr);
+
+        const char *slash_pos = strchr(name_ptr, '/');
+        if (slash_pos != name_ptr + name_len - 1 && slash_pos != NULL)
+            continue; /* ignore anything in subdirectories */
+
+#ifdef INITRD_DEBUG
+        printf("%d: %s\n", i, name_ptr);
+#endif
+        lua_pushnumber(L, i++);
+        lua_pushstring(L, name_ptr);
+        lua_rawset(L, -3);
+    }
+
+#ifdef INITRD_DEBUG
+    printf("finished initrd_list\n");
+#endif
+
+    return 1;
+}
+
+static int initrd_list(lua_State *L, struct initrd_data *data, int arguments_start) {
     size_t len;
     const char *path = luaL_checklstring(L, arguments_start, &len);
+
+#ifdef INITRD_DEBUG
+    printf("initrd_list \"%s\"\n", path);
+#endif
 
     if (*path == '/') {
         path++;
         len--;
     }
 
+    if (*path == 0)
+        return initrd_list_root(L, data);
+
+    const char name[256];
+
     bool should_free = false;
     if (path[len - 1] != '/') {
         const char *old_path = path;
-        path = malloc(++len);
+        path = malloc((++len) + 1);
         assert(path != NULL);
         sprintf(path, "%s/", old_path);
         should_free = true;
@@ -280,17 +386,27 @@ static int initrd_list(lua_State *L, struct initrd_data *data, int arguments_sta
     size_t file_size;
 
     if (!tar_find(iter, path, TAR_DIRECTORY, &file_data, &file_size)) {
+#ifdef INITRD_DEBUG
+        printf("initrd_list: directory not found\n");
+#endif
         if (should_free)
             free(path);
         return luaL_error(L, "directory not found");
     }
 
-    for (int i = 1;; i++) {
+    const char *directory_data = file_data;
+
+    iter = open_tar(data->start, data->end);
+    int i = 1;
+    while (true) {
         struct tar_header *header;
         const char *name_ptr = &name;
 
         if (!next_file(iter, &header, &file_data, &file_size))
             break;
+
+        if (file_data == directory_data)
+            continue;
 
         header->name[99] = 0;
         header->filename_prefix[154] = 0;
@@ -309,10 +425,17 @@ static int initrd_list(lua_State *L, struct initrd_data *data, int arguments_sta
         if (slash_pos != name_ptr + name_len - 1 && slash_pos != NULL)
             continue; /* ignore anything in subdirectories */
 
-        lua_pushnumber(L, i);
+#ifdef INITRD_DEBUG
+        printf("%d: %s\n", i, name_ptr);
+#endif
+        lua_pushnumber(L, i++);
         lua_pushstring(L, name_ptr);
         lua_rawset(L, -3);
     }
+
+#ifdef INITRD_DEBUG
+    printf("finished initrd_list\n");
+#endif
 
     if (should_free)
         free(path);

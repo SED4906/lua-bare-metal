@@ -52,6 +52,8 @@ bool tar_find(struct tar_iterator *iter, char *to_find, char kind, char **data, 
     if (*to_find == '/')
         to_find++;
 
+    size_t to_find_len = strlen(to_find);
+
     while (1) {
         const char *name_ptr = &name;
         if (!next_file(iter, &header, data, size))
@@ -67,11 +69,29 @@ bool tar_find(struct tar_iterator *iter, char *to_find, char kind, char **data, 
         if (*name_ptr == '/')
             name_ptr++;
 
-        if (strstr(name_ptr, "./") == name_ptr)
+        while (*name_ptr == '.' && *(name_ptr + 1) == '/')
             name_ptr += 2;
 
-        if (!strcmp(name, to_find))
+        const char *s = to_find;
+        for (; *name_ptr == *s && *name_ptr != 0; name_ptr++, s++);
+
+        if (*s != 0)
+            continue;
+
+        if (*name_ptr == 0)
             return true;
+        else if ((kind == 0 || kind == TAR_DIRECTORY) && *name_ptr == '/') { // match directory names with trailing /s
+            name_ptr++;
+            if (*name_ptr == 0)
+                return true;
+        }
+
+        /*if (!strcmp(name_ptr, to_find))
+            return true;
+
+        size_t len = strlen(name_ptr);
+        if (len == strlen(to_find) + 1 && name_ptr[len - 1] == '/')
+            return true;*/
     }
 
     return false;
