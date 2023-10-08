@@ -444,7 +444,7 @@ void gpu_init(struct gpu *gpu) {
     fill(gpu, 0, 0, gpu->width, gpu->height, ' ');
 }
 
-void gpu_error_message(struct gpu *gpu, const char *message) {
+[[noreturn]] void gpu_error_message(struct gpu *gpu, const char *message) {
     printf("%s\n", message);
 
     if (gpu->palette_size == 0) {
@@ -478,4 +478,7 @@ void gpu_error_message(struct gpu *gpu, const char *message) {
                 break;
         }
     }
+
+    while (1)
+        __asm__ __volatile__ ("cli; hlt");
 }

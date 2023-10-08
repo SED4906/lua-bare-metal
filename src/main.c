@@ -110,18 +110,20 @@ void kmain(void) {
     }
 
     memory_size = (mboot_ptr->mem_lower + mboot_ptr->mem_upper) * 1024;
+
     printf("%d.%02d MiB of memory detected\n", memory_size / 1048576, (memory_size / 10485) % 100);
     printf("framebuffer type: %d\n", mboot_ptr->framebuffer_type);
     printf("framebuffer width: %d\n", mboot_ptr->framebuffer_width);
     printf("framebuffer height: %d\n", mboot_ptr->framebuffer_height);
     printf("framebuffer pitch: %d\n", mboot_ptr->framebuffer_pitch);
-    printf("framebuffer bpp: %d\n",mboot_ptr->framebuffer_bpp);
+    printf("framebuffer bpp: %d\n", mboot_ptr->framebuffer_bpp);
     bool text_mode = mboot_ptr->framebuffer_type == 2;
     if (text_mode) {
         puts("text mode? yes");
     } else {
         puts("text mode? no");
     }
+
     uintptr_t largest_size = 0;
     uintptr_t base_addr = 0;
     struct mmap_entry *mmap = mboot_ptr->mmap_addr;
@@ -211,6 +213,25 @@ void kmain(void) {
 
     ps2_init();
 
+    if (mboot_ptr->mods_count == 0)
+        gpu_error_message(gpu, "missing initrd");
+
+    module = mboot_ptr->mods_addr;
+
+    struct tar_iterator *iter;
+    const char *data;
+    size_t size;
+
+    if (!text_mode) {
+        printf("loading font\n");
+        iter = open_tar(module->start, module->end);
+
+        if (tar_find(iter, "/font.hex", TAR_NORMAL_FILE, &data, &size))
+            vgagraphics_load_font(data, size);
+        else
+            gpu_error_message(gpu, "could not find font.hex");
+    }
+
     printf("starting Lua\n");
     lua_State *L = luaL_newstate();
     assert(L != NULL);
@@ -225,37 +246,17 @@ void kmain(void) {
 
     lua_register(L, "checkArg", check_arg);
 
-    if (mboot_ptr->mods_count != 0) {
-        module = mboot_ptr->mods_addr;
+    iter = open_tar(module->start, module->end);
+    if (!tar_find(iter, "/bios.lua", TAR_NORMAL_FILE, &data, &size))
+        gpu_error_message(gpu, "couldn't find bios.lua");
 
-        struct tar_iterator *iter;
-        const char *data;
-        size_t size;
-        if (!text_mode) {
-            printf("loading font\n");
-            iter = open_tar(module->start, module->end);
-            
-            if (tar_find(iter,"/font.hex",TAR_NORMAL_FILE,&data, &size)) {
-                vgagraphics_load_font(data,size);
-            } else 
-                gpu_error_message(gpu, "could not find font.hex");
-            
-            size = 0;
-            data = NULL;
-        }
-        iter = open_tar(module->start, module->end);
-        if (tar_find(iter, "/bios.lua", TAR_NORMAL_FILE, &data, &size)) {
-            printf("running bios.lua\n");
-            eeprom->contents = data;
-            gpu_error_message(gpu, run_string(L, "=bios.lua", data, size));
-        } else
-            gpu_error_message(gpu, "couldn't find bios.lua");
-    } else
-        gpu_error_message(gpu, "missing initrd");
+    printf("running bios.lua\n");
+    eeprom->contents = data;
+    gpu_error_message(gpu, run_string(L, "=bios.lua", data, size));
 
-    printf("finished execution, halting\n");
+    /*printf("finished execution, halting\n");
     lua_close(L);
 
     while (1)
-        __asm__ __volatile__ ("cli; hlt");
+        __asm__ __volatile__ ("cli; hlt");*/
 }
