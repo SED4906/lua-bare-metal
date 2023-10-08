@@ -104,7 +104,7 @@ static int unicode_sub(lua_State *L) {
     lua_Integer start = luaL_checkinteger(L, 2);
 
     if (start < 0)
-        start = offset_to_bytes(s, len, MAX(start, -s_length));
+        start = offset_to_bytes(s, len, len + MAX(start, -s_length));
     else if (start > 0)
         start = offset_to_bytes(s, len, MIN(start - 1, s_length));
 
@@ -114,7 +114,7 @@ static int unicode_sub(lua_State *L) {
         end = lua_tointeger(L, 3);
 
         if (end < 0)
-            end = offset_to_bytes(s, len, MAX(end + 1, -s_length));
+            end = offset_to_bytes(s, len, len + MAX(end + 1, -s_length));
         else
             end = offset_to_bytes(s, len, MIN(end, s_length));
     }
