@@ -213,6 +213,9 @@ static int computer_beep(lua_State *L) {
         int frequency = lua_isnumber(L, 1) ? lua_tointeger(L, 1) : 440;
         lua_Number duration = lua_isnumber(L, 2) ? lua_tonumber(L, 2) : 0.1;
 
+        if (!frequency)
+            return 0;
+
         beep(frequency, duration);
     } else {
         const char *s = luaL_checkstring(L, 1);
