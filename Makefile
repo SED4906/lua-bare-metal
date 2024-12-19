@@ -1,7 +1,7 @@
 LDFLAGS += -melf_i386 -Tkernel.ld
 CFLAGS += -O2 -m32 -march=i386 -nostartfiles -nostdlib -nostdinc -fno-stack-protector -static -static-libgcc \
 	-Ilibc/include -Ilibc/printf/src -Ilibc/arch/x86/include -Ilibc/openlibm/include -Ilibc/openlibm/src \
-	-Ilua -Ilibmemory/include -Isrc -include common.h -Wall -g
+	-Ilua -Ilibmemory/include -Isrc -include common.h -Wall -g -Wno-error=incompatible-pointer-types -Wno-error=implicit-function-declaration -Wno-error=int-conversion
 ASFLAGS += -32 -march=i386
 
 LUA_OBJS = lua/lapi.o lua/lcode.o lua/lctype.o lua/ldebug.o lua/ldo.o lua/ldump.o lua/lfunc.o lua/lgc.o lua/llex.o \

@@ -58,7 +58,7 @@ static char *message_traceback(lua_State *L) {
 
 static const char *run_string(lua_State *L, const char *name, const char *data, size_t size) {
     if (size == 0)
-        return;
+        return NULL;
 
     const char *message;
 
